@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish Eats</title>
+    <style>
+        body {
+            margin: 0;
+            text-align: center;
+            background: #111;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        h1 { margin: 15px 0 5px; }
+        p { margin: 0 0 10px; color: #ccc; font-size: 14px; }
+        canvas {
+            border: 2px solid #444;
+            display: block;
+            margin: 0 auto;
+        }
+        button {
+            margin: 10px 5px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Fish Eats</h1>
+<p>Move your mouse to control the orange fish. Eat smaller fish to grow bigger!</p>
+
+<canvas id="gameCanvas" width="700" height="450"></canvas>
+
+<button id="btnRestart">Restart</button>
+<button id="btnPause">Pause</button>
+
+<script>
+
+//FISH EATS HTML5 Canvas Graphics Pipeline Demo
+//A simple game where the player fish eats smaller fish and
+
+var canvas = document.getElementById('gameCanvas');
+var ctx = canvas.getContext('2d');
+var W = canvas.width;
+var H = canvas.height;
+
+
+//APPLICATION STAGE
+//where we manage game state, handle user input, run game logic like collision detection and spawning.
+
+
+//APPLICATION: Player fish state
+var player = {
+    x: W / 2,
+    y: H / 2,
+    size: 20,
+    color: '#ff8c42',
+    speed: 4,
+    fishEaten: 0,
+    facingLeft: false
+};
+
+//Game variables
+var fishes = [];        //array of NPC fish
+var paused = false;
+var gameOver = false;
+var time = 0;
+var mouseX = W / 2;
+var mouseY = H / 2;
+
+//Track mouse position for player movement
+canvas.addEventListener('mousemove', function(e) {
+    var rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+});
+
+//Button event handlers
+document.getElementById('btnRestart').addEventListener('click', function() {
+    resetGame();
+});
+
+document.getElementById('btnPause').addEventListener('click', function() {
+    paused = !paused;
+    document.getElementById('btnPause').textContent = paused ? 'Play' : 'Pause';
+});
+
+//Some colors for the NPC fish
+var fishColors = ['#5eead4', '#f472b6', '#a78bfa', '#fbbf24', '#34d399', '#60a5fa'];
+
+//Create a new NPC fish at a random position offscreen
+function spawnFish() {
+    var fromLeft = Math.random() > 0.5;
+    var size = 8 + Math.random() * 25;
+
+    fishes.push({
+        x: fromLeft ? -30 : W + 30,
+        y: 30 + Math.random() * (H - 60),
+        size: size,
+        color: fishColors[Math.floor(Math.random() * fishColors.length)],
+        speedX: (fromLeft ? 1 : -1) * (0.8 + Math.random() * 1.5),
+        speedY: (Math.random() - 0.5) * 0.5,
+        tailPhase: Math.random() * Math.PI * 2
+    });
+}
+
+//Reset everything to start a new game
+function resetGame() {
+    player.x = W / 2;
+    player.y = H / 2;
+    player.size = 20;
+    player.fishEaten = 0;
+    player.facingLeft = false;
+    fishes = [];
+    gameOver = false;
+    paused = false;
+    document.getElementById('btnPause').textContent = 'Pause';
+
+    //spawn starting fish
+    for (var i = 0; i < 8; i++) {
+        spawnFish();
+    }
+}
+
+//Move player toward the mouse cursor
+function updatePlayer() {
+    var dx = mouseX - player.x;
+    var dy = mouseY - player.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > 5) {
+        player.x += (dx / dist) * player.speed;
+        player.y += (dy / dist) * player.speed;
+    }
+
+    //which way is the fish facing
+    if (dx < -2) player.facingLeft = true;
+    if (dx > 2) player.facingLeft = false;
+
+    //keep inside canvas bounds
+    if (player.x < player.size) player.x = player.size;
+    if (player.x > W - player.size) player.x = W - player.size;
+    if (player.y < player.size) player.y = player.size;
+    if (player.y > H - player.size) player.y = H - player.size;
+}
+
+//Update NPC fish positions
+function updateFishes() {
+    for (var i = fishes.length - 1; i >= 0; i--) {
+        var f = fishes[i];
+        f.x += f.speedX;
+        f.y += f.speedY;
+
+        //bounce off top/bottom
+        if (f.y < f.size || f.y > H - f.size) {
+            f.speedY = -f.speedY;
+        }
+
+        //remove if off screen
+        if (f.x < -60 || f.x > W + 60) {
+            fishes.splice(i, 1);
+        }
+    }
+}
+
+//Check if player collides with any NPC fish
+function checkCollisions() {
+    for (var i = fishes.length - 1; i >= 0; i--) {
+        var f = fishes[i];
+        var dx = player.x - f.x;
+        var dy = player.y - f.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < player.size + f.size * 0.5) {
+            if (f.size < player.size) {
+                // player eats the smaller fish
+                player.fishEaten++;
+                player.size += 2;
+                fishes.splice(i, 1);
+            } else {
+                // bigger fish eats the player
+                gameOver = true;
+            }
+        }
+    }
+}
+
+//Spawn new fish periodically to keep things interesting
+function maybeSpawnFish() {
+    if (Math.random() < 0.025 || fishes.length < 4) {
+        spawnFish();
+    }
+
+    //after eating 5 fish, start spawning dangerous big fish
+    if (player.fishEaten > 5 && Math.random() < 0.008) {
+        fishes.push({
+            x: Math.random() > 0.5 ? -30 : W + 30,
+            y: 30 + Math.random() * (H - 60),
+            size: player.size + 5 + Math.random() * 15,
+            color: '#ef4444',
+            speedX: (Math.random() > 0.5 ? 1 : -1) * (0.5 + Math.random()),
+            speedY: (Math.random() - 0.5) * 0.4,
+            tailPhase: Math.random() * Math.PI * 2
+        });
+    }
+}
+
+
+// GEOMETRY STAGE
+//takes the raw position and size of a fish and computes the transformed coordinates for each body part.
+
+
+
+//Compute all the points needed to draw a fish
+function computeFishGeometry(x, y, size, facingLeft, tailPhase, t) {
+    //Determine direction multiplier for flipping
+    var dir = facingLeft ? -1 : 1;
+
+    //Scale body proportions based on fish size
+    var bodyW = size * 1.5;
+    var bodyH = size * 0.85;
+
+    //Translation: body center position
+    var bodyX = x;
+    var bodyY = y;
+
+    //Rotation: tail wag angle using sin function
+    var tailAngle = Math.sin(t * 5 + tailPhase) * 0.4;
+
+    //Translation + rotation: tail triangle points
+    var tailX = x - dir * bodyW * 0.85;
+    var tailY = y;
+    var tailTopX = tailX - dir * size * 0.6;
+    var tailTopY = tailY - size * 0.5 + Math.sin(tailAngle) * 4;
+    var tailBotX = tailX - dir * size * 0.6;
+    var tailBotY = tailY + size * 0.5 - Math.sin(tailAngle) * 4;
+
+    //Translation: eye position relative to body center
+    var eyeX = x + dir * bodyW * 0.4;
+    var eyeY = y - bodyH * 0.15;
+    var eyeR = size * 0.14;
+
+    //Translation + scaling: fin on top
+    var finX = x - dir * bodyW * 0.1;
+    var finY = y - bodyH;
+    var finSize = size * 0.35;
+
+    //Translation: mouth position
+    var mouthX = x + dir * bodyW * 0.75;
+    var mouthY = y + 2;
+
+    return {
+        bodyX: bodyX, bodyY: bodyY,
+        bodyW: bodyW, bodyH: bodyH,
+        dir: dir,
+        tailX: tailX, tailY: tailY,
+        tailTopX: tailTopX, tailTopY: tailTopY,
+        tailBotX: tailBotX, tailBotY: tailBotY,
+        eyeX: eyeX, eyeY: eyeY, eyeR: eyeR,
+        finX: finX, finY: finY, finSize: finSize,
+        mouthX: mouthX, mouthY: mouthY
+    };
+}
+
+
+
+// RASTERIZATION STAGE
+//where we draw pixels onto the canvas.
+
+
+//Fill background with a blue color for water
+function drawBackground() {
+    ctx.fillStyle = '#0f3460';
+    ctx.fillRect(0, 0, W, H);
+
+    //draw a simple sandy bottom
+    ctx.fillStyle = '#3b5249';
+    ctx.fillRect(0, H - 25, W, 25);
+}
+
+//Draw fish using the geometry we computed
+function drawFish(geom, color) {
+    //Draw tail - fill a triangle shape
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(geom.tailX, geom.tailY);
+    ctx.lineTo(geom.tailTopX, geom.tailTopY);
+    ctx.lineTo(geom.tailBotX, geom.tailBotY);
+    ctx.closePath();
+    ctx.fill();
+
+    //Draw body - fill an ellipse
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(geom.bodyX, geom.bodyY, geom.bodyW, geom.bodyH, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    //Draw body outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(geom.bodyX, geom.bodyY, geom.bodyW, geom.bodyH, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    //Draw top fin - small triangle
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(geom.finX, geom.finY);
+    ctx.lineTo(geom.finX - geom.dir * geom.finSize * 0.5, geom.finY - geom.finSize);
+    ctx.lineTo(geom.finX - geom.dir * geom.finSize, geom.finY);
+    ctx.closePath();
+    ctx.fill();
+
+    //Draw eye - white circle then black pupil
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(geom.eyeX, geom.eyeY, geom.eyeR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'black';
+    ctx.beginPath();
+    ctx.arc(geom.eyeX + geom.dir * 1, geom.eyeY, geom.eyeR * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    //Draw mouth - just a small line
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(geom.mouthX, geom.mouthY);
+    ctx.lineTo(geom.mouthX - geom.dir * 4, geom.mouthY + 3);
+    ctx.stroke();
+}
+
+//Draw score text on screen
+function drawScore() {
+    ctx.font = '16px Arial';
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'left';
+    ctx.fillText('Fish eaten: ' + player.fishEaten, 10, 25);
+    ctx.fillText('Size: ' + player.size, 10, 45);
+}
+
+//Draw game over text
+function drawGameOver() {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.font = 'bold 32px Arial';
+    ctx.fillStyle = 'red';
+    ctx.textAlign = 'center';
+    ctx.fillText('Game Over!', W / 2, H / 2 - 15);
+
+    ctx.font = '18px Arial';
+    ctx.fillStyle = 'white';
+    ctx.fillText('You ate ' + player.fishEaten + ' fish. Click Restart to try again.', W / 2, H / 2 + 20);
+}
+
+
+
+// MAIN GAME LOOP
+// This ties all 3 stages together. Every frame:
+
+function gameLoop() {
+    requestAnimationFrame(gameLoop);
+    if (paused) return;
+
+    //application stage: advance time
+    time += 0.016;
+
+    if (!gameOver) {
+        //application stage: update all game logic
+        updatePlayer();
+        updateFishes();
+        checkCollisions();
+        maybeSpawnFish();
+    }
+
+    //rasterization stage: draw background
+    drawBackground();
+
+    //draw each NPC fish through the pipeline
+    for (var i = 0; i < fishes.length; i++) {
+        var f = fishes[i];
+        var facingLeft = f.speedX < 0;
+
+        //geometry stage: compute this fish's shape
+        var geom = computeFishGeometry(f.x, f.y, f.size, facingLeft, f.tailPhase, time);
+
+        //rasterization stage: draw this fish
+        var col = f.size >= player.size ? '#ef4444' : f.color;
+        drawFish(geom, col);
+    }
+
+    //player fish through the pipeline
+    //geometry stage: compute player shape
+    var pGeom = computeFishGeometry(player.x, player.y, player.size, player.facingLeft, 0, time);
+
+    //rasterization stage: draw player
+    drawFish(pGeom, player.color);
+
+    //rasterization stage: draw the score
+    drawScore();
+
+    if (gameOver) {
+        drawGameOver();
+    }
+}
+
+//start the game
+resetGame();
+gameLoop();
+</script>
+
+</body>
+</html>
